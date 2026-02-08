@@ -1,0 +1,62 @@
+import os
+import shutil
+import time
+from datetime import datetime, timedelta
+from sec_edgar_downloader import Downloader
+
+def download_bdc_with_batch(ticker, base_path, email, start_year=2004):
+    target_path = os.path.join(base_path, ticker)
+    if not os.path.exists(target_path):
+        os.makedirs(target_path)
+    
+    dl = Downloader("Chorong Lee", email, target_path)
+    current_year = datetime.now().year
+    
+    # 5년 단위로 구간 생성 (예: 2004-2008, 2009-2013...)
+    for year in range(start_year, current_year + 1, 5):
+        end_year = min(year + 4, current_year)
+        after_date = f"{year}-01-01"
+        before_date = f"{end_year}-12-31"
+        
+        print(f"\n>>> [{ticker}] {year}~{end_year} 구간 수집 중...")
+        
+        try:
+            # 연간 보고서 수집
+            dl.get("10-K", ticker, after=after_date, before=before_date)
+            # 분기 보고서 수집
+            dl.get("10-Q", ticker, after=after_date, before=before_date)
+            
+            # SEC 서버 보호를 위해 구간 사이 3초 휴식
+            time.sleep(3) 
+            
+        except Exception as e:
+            print(f"!!! {year} 구간 오류 발생: {e}")
+            continue
+
+    # 파일 정리 로직 실행
+    organize_and_cleanup(ticker, target_path)
+
+def organize_and_cleanup(ticker, target_path):
+    filing_root = os.path.join(target_path, "sec-edgar-filings", ticker)
+    if not os.path.exists(filing_root): return
+
+    for form_type in ["10-K", "10-Q"]:
+        form_path = os.path.join(filing_root, form_type)
+        if not os.path.exists(form_path): continue
+        
+        for folder_name in os.listdir(form_path):
+            sub_folder = os.path.join(form_path, folder_name)
+            if os.path.isdir(sub_folder):
+                for file_name in os.listdir(sub_folder):
+                    if file_name.endswith(".html"):
+                        new_name = f"{ticker}_{form_type}_{folder_name}.html"
+                        shutil.move(os.path.join(sub_folder, file_name), os.path.join(target_path, new_name))
+    
+    shutil.rmtree(os.path.join(target_path, "sec-edgar-filings"))
+    print(f"\n[완료] {ticker} 모든 구간 정리 완료!")
+
+# 실행부
+base_dir = r"C:\Users\chlee\내 드라이브\Obsidian\.obsidian\Chorong Lee_Sync\04_investment\Analysis\BDC"
+email = "chlee@example.com"
+
+download_bdc_with_batch("ARCC", base_dir, email)
